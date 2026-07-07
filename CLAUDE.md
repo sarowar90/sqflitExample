@@ -1,122 +1,74 @@
-# QR Code POS — Project Documentation
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Overview
-A Flutter-based offline Point-of-Sale (POS) app that uses the device camera to scan QR codes and process retail sales. Store owners can manage a product inventory, scan product QR codes at checkout to build a cart, complete sales transactions, and review the full sales history — all stored locally on-device with SQLite.
 
-## Tech Stack
-- **Flutter SDK:** `^3.11.5` (Dart)
-- **State management:** Riverpod (`flutter_riverpod: ^2.5.1`)
-- **Local database:** sqflite (`^2.4.3`) with `path: ^1.9.1`
-- **QR code generation:** `qr_flutter: ^4.1.0`
-- **QR/barcode scanning:** `mobile_scanner: ^7.2.0`
-- **Fonts:** `google_fonts: ^6.2.1` (Outfit + Share Tech Mono)
-- **Icons:** `cupertino_icons: ^1.0.8`
+A Flutter-based offline Point-of-Sale (POS) app (Dart package name `sqflite_app`) that uses the device camera to scan QR codes and process retail sales. Store owners manage a product inventory, scan product QR codes at checkout to build a cart, complete sales transactions, and review the full sales history — all stored locally on-device with SQLite. There is no backend and no authentication.
 
-## Project Structure
-```
-lib/
-  main.dart              — App entry point; ProviderScope, MaterialApp (dark theme), 4-tab bottom nav shell
-  theme.dart             — AppTheme: dark color palette, gradients, Material 3 ThemeData (Outfit font)
-  providers.dart         — All Riverpod providers and StateNotifiers
-  models.dart            — Product and SaleTransaction data models (used by the main app)
-  database_helper.dart   — Main DatabaseHelper singleton: products + sales_transactions schema and queries
-
-  models/
-    greeting.dart        — Greeting model (id, message, language, category) — learning exercise, not used by the main app
-
-  services/
-    greeting_service.dart — In-memory singleton with 12 multilingual greetings; getRandom, getAll, filter by language/category — learning exercise, not used by the main app
-
-  screens/
-    dashboard_screen.dart      — Home tab: stat cards, quick-action buttons, recent sales list
-    sales_screen.dart          — Scan POS tab: live QR scanner, cart management, checkout + receipt
-    product_list_screen.dart   — Inventory tab: searchable product list, add/edit/delete dialogs
-    product_detail_screen.dart — QR code display for a product; print/share simulation (push route)
-    sales_history_screen.dart  — Sales Log tab: all transactions, aggregate metrics, DB reset button
-```
-
-## Database Schema
-
-### `pos_database.db` (lib/database_helper.dart — main app)
-
-**products**
-| Column     | Type    | Constraints              |
-|------------|---------|--------------------------|
-| id         | INTEGER | PRIMARY KEY AUTOINCREMENT |
-| name       | TEXT    | NOT NULL                 |
-| price      | REAL    | NOT NULL                 |
-| quantity   | INTEGER | NOT NULL                 |
-| barcode    | TEXT    | NOT NULL UNIQUE           |
-
-**sales_transactions**
-| Column        | Type    | Constraints              |
-|---------------|---------|--------------------------|
-| id            | INTEGER | PRIMARY KEY AUTOINCREMENT |
-| product_id    | INTEGER | NOT NULL                 |
-| product_name  | TEXT    | NOT NULL (denormalized snapshot) |
-| quantity      | INTEGER | NOT NULL                 |
-| total_price   | REAL    | NOT NULL                 |
-| timestamp     | TEXT    | NOT NULL (ISO 8601)      |
-
-`sellProduct()` runs both the stock decrement and the transaction insert inside a single SQLite transaction to guarantee atomicity.
-
-## Navigation
-
-`MainNavigationShell` renders a `BottomNavigationBar` with four fixed tabs:
-
-| Index | Label      | Icon                  | Screen                |
-|-------|------------|-----------------------|-----------------------|
-| 0     | Dashboard  | `Icons.dashboard`     | `DashboardScreen`     |
-| 1     | Scan POS   | `Icons.qr_code_scanner` | `SalesScreen`       |
-| 2     | Inventory  | `Icons.inventory_2`   | `ProductListScreen`   |
-| 3     | Sales Log  | `Icons.history_edu`   | `SalesHistoryScreen`  |
-
-`DashboardScreen` receives an `onTabChange(int)` callback so the quick-action buttons can switch tabs programmatically.
-
-## Screens
-
-- **DashboardScreen** (`screens/dashboard_screen.dart`) — Shows four gradient stat cards (total products, low-stock count, total sales $, items sold) and three quick-action buttons that deep-link to other tabs. The recent-transactions list widget exists but is currently commented out.
-
-- **SalesScreen** (`screens/sales_screen.dart`) — Live camera QR scanner (MobileScanner) with an animated laser-line overlay. Scanned barcodes are matched against in-memory product state. If the barcode is unknown, an inline "quick add" dialog lets the user register the product on the spot. The cart supports quantity adjustments; checkout calls `SalesNotifier.checkoutProduct()` per cart item and shows a receipt dialog on success.
-
-- **ProductListScreen** (`screens/product_list_screen.dart`) — Searchable list of all products (name, barcode, or ID). Products with quantity ≤ 5 are flagged with a red "Low Stock" badge. An add/edit dialog auto-generates a `PROD-XXXXXX` barcode for new products (overridable). Delete requires confirmation.
-
-- **ProductDetailScreen** (`screens/product_detail_screen.dart`) — Pushed via `Navigator.push` from ProductListScreen. Renders the product's QR code using `QrImageView`. Print and Share buttons are simulated (no real printer/share integration yet).
-
-- **SalesHistoryScreen** (`screens/sales_history_screen.dart`) — Displays all `SaleTransaction` records newest-first, with aggregate metrics (total revenue, quantity sold, transaction count). Includes a "Reset DB" FAB (destructive — deletes all products and transactions) for development use.
-
-## State Management
-
-All providers live in `lib/providers.dart`:
-
-| Provider | Type | Description |
-|---|---|---|
-| `dbHelperProvider` | `Provider<DatabaseHelper>` | Singleton database helper |
-| `productListProvider` | `StateNotifierProvider<ProductListNotifier, List<Product>>` | Full product list; exposes `addProduct`, `updateProduct`, `deleteProduct`, `loadProducts` |
-| `searchQueryProvider` | `StateProvider<String>` | Current search text in ProductListScreen |
-| `filteredProductsProvider` | `Provider<List<Product>>` | Derived: filters `productListProvider` by name, barcode, or ID |
-| `salesProvider` | `StateNotifierProvider<SalesNotifier, List<SaleTransaction>>` | Transaction log; `checkoutProduct` atomically sells and reloads both products and transactions |
-| `scannedBarcodeProvider` | `StateProvider<String?>` | Holds the most recently scanned barcode value |
-| `scannedProductProvider` | `FutureProvider.autoDispose<Product?>` | Auto-resolves a product from a scanned barcode via the DB |
-
-## How to Run
+## Commands
 
 ```bash
-# Android
-flutter run -d android
+flutter pub get              # Install dependencies (run after editing pubspec.yaml)
 
-# Windows desktop
-flutter run -d windows
+flutter run -d android       # Run on a connected Android device/emulator (primary target — camera scanning)
+flutter run -d windows       # Run on Windows desktop
+flutter devices              # List available run targets
 
-# List available devices
-flutter devices
+flutter analyze              # Static analysis / lint (flutter_lints, see analysis_options.yaml)
+flutter test                 # Run the full test suite
+flutter test test/widget_test.dart              # Run a single test file
+flutter test --plain-name "smoke test"          # Run tests matching a name
+
+flutter build apk            # Release Android build
 ```
 
-`mobile_scanner` requires the camera permission. On Android, ensure `CAMERA` is declared in `AndroidManifest.xml` (added automatically by the package).
+`mobile_scanner` requires the camera permission; QR scanning only works on a device with a camera (a physical Android phone is the realistic target — desktop/web have no scannable camera flow). The `CAMERA` permission is declared automatically by the package on Android.
 
-## Known Warnings / Notes
+Note: `test/widget_test.dart` is still the default Flutter counter test and does not match this app — it will fail if run as-is. Replace it before relying on `flutter test`.
 
-- **Unused learning artifacts:** `lib/models/greeting.dart` and `lib/services/greeting_service.dart` are from earlier Dart/Flutter practice exercises and are not wired into the main app. They can be deleted without affecting any functionality.
-- **Commented-out recent sales list:** `DashboardScreen` has a `ListView.builder` for recent transactions that is commented out (lines 194–205). The `_buildTransactionItem` and `_buildEmptyState` helper methods are still present but unused.
-- **Simulated print/share:** `ProductDetailScreen._simulatePrint()` and `_simulateShare()` show UI feedback only — no real thermal printer or system share-sheet integration exists yet.
-- **No authentication:** The app has no user login; anyone with the device can access all features including the destructive "Reset DB" button.
+## Architecture
+
+Single-package Flutter app. All application code is under `lib/`; there are no feature modules or layers beyond the flat structure below.
+
+**Data layer — `lib/database_helper.dart`.** `DatabaseHelper` is a singleton wrapping one SQLite database, `pos_database.db`, with two tables (schema below). It owns all SQL. The critical method is `sellProduct()`, which decrements product stock **and** inserts a sales-transaction row inside a single SQLite transaction so a sale is atomic — never edit these two writes to run independently.
+
+**Models — `lib/models.dart`.** `Product` and `SaleTransaction` plain data classes with `toMap`/`fromMap` for SQLite round-tripping. `SaleTransaction` denormalizes `product_name` as a point-in-time snapshot, so renaming a product does not rewrite history.
+
+**State — `lib/providers.dart` (Riverpod).** This is the hub connecting UI to the database; understand it before changing any screen behavior.
+
+| Provider | Type | Role |
+|---|---|---|
+| `dbHelperProvider` | `Provider<DatabaseHelper>` | The singleton DB helper |
+| `productListProvider` | `StateNotifierProvider<ProductListNotifier, List<Product>>` | Full product list; `addProduct`, `updateProduct`, `deleteProduct`, `loadProducts` |
+| `searchQueryProvider` | `StateProvider<String>` | Inventory search text |
+| `filteredProductsProvider` | `Provider<List<Product>>` | Derived filter of `productListProvider` by name/barcode/ID |
+| `salesProvider` | `StateNotifierProvider<SalesNotifier, List<SaleTransaction>>` | Transaction log; `checkoutProduct` atomically sells then reloads **both** products and transactions |
+| `scannedBarcodeProvider` | `StateProvider<String?>` | Most recently scanned barcode |
+| `scannedProductProvider` | `FutureProvider.autoDispose<Product?>` | Resolves a scanned barcode to a `Product` via the DB |
+
+Key data-flow rule: after a sale, `SalesNotifier.checkoutProduct` reloads product *and* transaction state so stock counts and the sales log stay consistent. Mutations that change stock or sales must go through the notifiers, not direct `DatabaseHelper` calls from widgets, or the in-memory state will drift from the DB.
+
+**UI — `lib/main.dart`, `lib/theme.dart`, `lib/screens/`.** `main.dart` wraps the app in `ProviderScope` and renders `MainNavigationShell`, a `BottomNavigationBar` with four fixed tabs. `DashboardScreen` receives an `onTabChange(int)` callback so its quick-action buttons can switch tabs programmatically. `theme.dart` (`AppTheme`) defines the dark Material 3 palette, gradients, and Outfit/Share Tech Mono fonts via `google_fonts`.
+
+| Tab | Screen (`lib/screens/`) | Purpose |
+|---|---|---|
+| Dashboard | `dashboard_screen.dart` | Gradient stat cards + quick actions (recent-sales list is commented out) |
+| Scan POS | `sales_screen.dart` | Live `MobileScanner` QR scanner → cart → checkout + receipt; unknown barcodes trigger an inline "quick add" |
+| Inventory | `product_list_screen.dart` | Searchable products, add/edit/delete; low-stock badge at quantity ≤ 5; auto-generates `PROD-XXXXXX` barcodes |
+| Sales Log | `sales_history_screen.dart` | All transactions newest-first + aggregates; destructive "Reset DB" FAB |
+
+`product_detail_screen.dart` is pushed via `Navigator.push` (not a tab) and renders a product's QR via `QrImageView`; its Print/Share buttons are simulated (UI feedback only).
+
+## Database Schema (`pos_database.db`)
+
+**products**: `id` INTEGER PK AUTOINCREMENT · `name` TEXT NOT NULL · `price` REAL NOT NULL · `quantity` INTEGER NOT NULL · `barcode` TEXT NOT NULL UNIQUE
+
+**sales_transactions**: `id` INTEGER PK AUTOINCREMENT · `product_id` INTEGER NOT NULL · `product_name` TEXT NOT NULL (denormalized snapshot) · `quantity` INTEGER NOT NULL · `total_price` REAL NOT NULL · `timestamp` TEXT NOT NULL (ISO 8601)
+
+## Notes / Gotchas
+
+- **Unused learning artifacts:** `lib/models/greeting.dart` and `lib/services/greeting_service.dart` are leftover Dart practice exercises, not wired into the app. Safe to delete.
+- **Dead code in DashboardScreen:** the recent-transactions `ListView.builder` is commented out; `_buildTransactionItem` and `_buildEmptyState` remain but are unused.
+- **Reset DB is unguarded:** the Sales Log FAB deletes all products and transactions with confirmation only — there is no auth or backup.
+- **Build warning:** `mobile_scanner` still applies the legacy Kotlin Gradle Plugin; builds fine today but future Flutter versions will reject it.
