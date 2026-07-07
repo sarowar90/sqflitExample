@@ -1,0 +1,8 @@
+# Local-only preview config. Inherits everything from mkdocs.yml and overrides
+# site_url so `mkdocs serve` mounts at the clean root (http://127.0.0.1:8000/)
+# instead of the /sqflitExample/ subpath that GitHub Pages needs.
+#
+# Use with:  python -m mkdocs serve -f mkdocs.local.yml
+# Do NOT use this file for building the deployed site.
+INHERIT: mkdocs.yml
+site_url: http://127.0.0.1:8000/

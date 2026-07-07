@@ -1,0 +1,4 @@
+# Documentation tooling (MkDocs). Separate from the Flutter app.
+# Install with:  pip install -r requirements-docs.txt
+# mkdocs-material pulls in mkdocs, pymdown-extensions, and pygments.
+mkdocs-material>=9.5,<10
