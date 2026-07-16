@@ -148,7 +148,106 @@ finding that only looks right in isolation.
 - **Nondeterminism.** Independent agents disagree on severity across runs. Synthesis normalizes,
   but the review will not be byte-identical between runs on the same PR.
 
+---
+
+# Context management
+
+Context is the budget this pipeline actually spends. Not money, not wall-clock — **room in the
+orchestrator's window**, which is finite and which nothing gives back. A review that reads the whole
+repo into the main session works once, on a small PR, and then never again.
+
+So the rule the whole design serves: **the orchestrator must never hold a file.** It holds a bundle,
+four reports, and a verdict. Everything else happens somewhere it can be thrown away.
+
+## Measured, not assumed
+
+One full run against `fixture/cart-checkout-do-not-merge` (3 files, +42/-0):
+
+| Stage | Tokens spent | Tool calls | Returned to main session |
+|---|---:|---:|---|
+| `pr-context-explorer` | 54,801 | 21 | ~200-line bundle |
+| `invariant-checker` | 33,343 | 4 | 2 findings |
+| `test-auditor` | 41,018 | 2 | 1 finding |
+| `security-scanner` | 35,715 | 2 | 1 line |
+| `style-checker` | 35,504 | 2 | 1 line |
+| **Total** | **200,381** | **31** | **~320 lines** |
+
+Roughly **200k tokens of work; ~320 lines reached the orchestrator.** The other ~99% was spent in
+windows that were discarded on completion. That ratio is the design, stated as a number.
+
+The checkers' 2–4 tool calls each are the second thing worth reading in that table. They are not
+exploring. They read their rubric, read the bundle, and answered. The one that used four
+(`invariant-checker`) spent two confirming line numbers before reporting them.
+
+## The five strategies, and what each one buys
+
+**1. Fan-out as disposal.** A subagent's context dies with it. Explore burned 54,801 tokens across
+21 tool calls to understand a 42-line diff; the orchestrator paid ~200 lines for the result. This is
+the largest lever by an order of magnitude, and it is not really "delegation" — it is choosing where
+to *spend* context so that it can be *dropped*.
+
+**2. The bundle as a compression checkpoint.** Explore's job is a lossy encode: 21 tool calls of
+repo reading down to one structured artifact. What makes it work is that the loss is *directed* —
+the format names a drop order (`cut quoted code first, then neighbours, never the test findings or
+the load-bearing list`), so when the cap bites, the agent sheds the recoverable material and keeps
+the expensive-to-recompute material. An undirected "be concise" drops whatever is at the bottom.
+
+**3. Scoped tools as a budget ceiling.** The checkers have `Read` and `Grep`, and instructions to
+open only files the bundle names, only to confirm a line they are about to report. This is a context
+control, not a security one: an agent that may explore *will*, and four exploring checkers rebuild
+the repo understanding four times — the exact cost the bundle was written to buy out once. The
+measured 2–4 tool calls per checker are that instruction holding.
+
+**4. Facts and judgement, split.** Explore reports what the code *is*; checkers decide what it
+*means*. The context argument for the split: a bundle carrying verdicts invites its readers to
+argue with them, and arguing requires re-reading the evidence. Facts are cheap to accept.
+
+**5. Not spending it at all.** Plan may skip checkers or end the run. On a docs-only PR the correct
+token spend is close to zero, and the pipeline has to be able to reach zero. The cheapest context is
+the context never allocated.
+
+## Where it is paid twice, honestly
+
+**The bundle is relayed to all four checkers, so it is paid for four times.** Subagents cannot read
+each other's output; the orchestrator copies the bundle into each prompt. At ~200 lines that is a
+few thousand tokens × 4 — visible in the checkers' 33–41k floors, most of which is bundle plus
+rubric, not work.
+
+This is a real cost of the fan-out and it is worth stating rather than hiding: a single reviewer
+holding one window would not pay it. It buys focus, isolation, and parallelism, and it is the price
+of those. It also puts a hard ceiling on bundle size that has nothing to do with the orchestrator's
+window — **every line Explore adds costs five times over**, so the 400-line cap is not tidiness, it
+is arithmetic.
+
+## Compaction is a fallback, not a strategy
+
+Long sessions get summarized by the harness. That is a safety net for when the design leaks, not
+part of the design. Compaction is lossy in an *undirected* way — it does not know that the
+load-bearing list matters more than a quoted hunk. Every strategy above exists so that compaction
+never has to make that choice for us.
+
+If the orchestrator is being compacted mid-review, something has already gone wrong: a checker
+returned a wall of text, or Explore ignored its cap, or someone read a file into the main session
+"just to check". Treat it as a bug, not weather.
+
+## Rules of thumb
+
+- The orchestrator reads reports. It does not read code. If it needs code, that is a missing bundle
+  field, not a reason to open the file.
+- Cap every subagent's output, and say what to cut first. A cap without a drop order is a lottery.
+- Never re-run a search another agent already ran and reported. Trust the bundle's `Tests` section.
+- The bundle's `Gaps` section is a context instrument. A gap costs a follow-up; a *silent* gap costs
+  a wrong review.
+- Measure before optimizing. The numbers above took one run to collect and immediately showed that
+  Explore, not the checkers, is where the tokens go.
+
+---
+
 ## What runs where
 
 The subagent definitions live in `.claude/agents/*.md`. The orchestrator is a Claude Code session
 triggered on `pull_request`, posting through `gh pr comment`.
+
+Note: Claude Code registers `.claude/agents/` at session start. Agents added mid-session are not
+callable by name until the session restarts — which is why the CI orchestrator boots fresh per PR
+and never hits this.
