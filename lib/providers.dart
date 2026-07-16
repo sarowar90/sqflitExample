@@ -105,6 +105,40 @@ final salesProvider = StateNotifierProvider<SalesNotifier, List<SaleTransaction>
   return SalesNotifier(dbHelper, ref);
 });
 
+// --- Dashboard metrics ---
+
+/// Stock at or below this is shown as low. Inventory badges the same figure.
+const int kLowStockThreshold = 5;
+
+/// The four numbers on the dashboard, derived from products and sales.
+class DashboardMetrics {
+  final int totalProducts;
+  final int lowStockCount;
+  final double totalSalesValue;
+  final int totalItemsSold;
+
+  const DashboardMetrics({
+    required this.totalProducts,
+    required this.lowStockCount,
+    required this.totalSalesValue,
+    required this.totalItemsSold,
+  });
+
+  bool get hasLowStock => lowStockCount > 0;
+}
+
+final dashboardMetricsProvider = Provider<DashboardMetrics>((ref) {
+  final products = ref.watch(productListProvider);
+  final transactions = ref.watch(salesProvider);
+
+  return DashboardMetrics(
+    totalProducts: products.length,
+    lowStockCount: products.where((p) => p.quantity <= kLowStockThreshold).length,
+    totalSalesValue: transactions.fold<double>(0, (sum, t) => sum + t.totalPrice),
+    totalItemsSold: transactions.fold<int>(0, (sum, t) => sum + t.quantity),
+  );
+});
+
 // --- POS / QR Scanner State ---
 final scannedBarcodeProvider = StateProvider<String?>((ref) => null);
 

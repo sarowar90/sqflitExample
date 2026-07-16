@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models.dart';
+import '../providers.dart';
 import '../theme.dart';
 
 class ProductDetailScreen extends StatelessWidget {
@@ -11,7 +12,7 @@ class ProductDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLowStock = product.quantity <= 5;
+    final isLowStock = product.quantity <= kLowStockThreshold;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Product QR Code'), centerTitle: true),
