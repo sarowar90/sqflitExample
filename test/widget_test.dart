@@ -5,6 +5,7 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite_app/main.dart';
@@ -60,17 +61,57 @@ class FakeDatabaseHelper implements DatabaseHelper {
 }
 
 void main() {
-  testWidgets('POS Scanner smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  testWidgets('app opens on the dashboard', (WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [dbHelperProvider.overrideWithValue(FakeDatabaseHelper())],
         child: const MyApp(),
       ),
     );
+    await tester.pump();
 
-    // Verify that the POS Scanner displays key elements on startup
-    expect(find.text('QR Code Sales POS'), findsOneWidget);
-    expect(find.text('Checkout Bill'), findsOneWidget);
+    expect(find.text('Smart Retail POS'), findsOneWidget);
+    expect(find.text('Total Products'), findsOneWidget);
+  });
+
+  testWidgets('bottom navigation exposes all four tabs', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [dbHelperProvider.overrideWithValue(FakeDatabaseHelper())],
+        child: const MyApp(),
+      ),
+    );
+    await tester.pump();
+
+    // The dashboard's quick actions reuse these labels, so scope the search to
+    // the navigation bar itself.
+    Finder navLabel(String label) => find.descendant(
+      of: find.byType(BottomNavigationBar),
+      matching: find.text(label),
+    );
+
+    expect(navLabel('Dashboard'), findsOneWidget);
+    expect(navLabel('Scan POS'), findsOneWidget);
+    expect(navLabel('Inventory'), findsOneWidget);
+    expect(navLabel('Sales Log'), findsOneWidget);
+  });
+
+  testWidgets('tapping the Inventory tab shows the loaded products', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [dbHelperProvider.overrideWithValue(FakeDatabaseHelper())],
+        child: const MyApp(),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.inventory_2_outlined).last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Laptop'), findsOneWidget);
   });
 }
