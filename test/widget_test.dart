@@ -58,9 +58,6 @@ class FakeDatabaseHelper implements DatabaseHelper {
 
   @override
   Future<int> updateProduct(Product product) async => 1;
-
-  @override
-  Future<bool> sellCart(Map<int, int> cart) async => true;
 }
 
 void main() {

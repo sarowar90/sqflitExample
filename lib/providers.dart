@@ -98,15 +98,6 @@ class SalesNotifier extends StateNotifier<List<SaleTransaction>> {
     }
     return success;
   }
-
-  /// Checks out a whole cart in one go.
-  Future<bool> checkoutCart(Map<int, int> cart) async {
-    final success = await _dbHelper.sellCart(cart);
-    if (success) {
-      await loadTransactions();
-    }
-    return success;
-  }
 }
 
 final salesProvider = StateNotifierProvider<SalesNotifier, List<SaleTransaction>>((ref) {
