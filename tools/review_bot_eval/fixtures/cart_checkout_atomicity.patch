@@ -1,0 +1,75 @@
+diff --git a/lib/database_helper.dart b/lib/database_helper.dart
+index f5430e8..cb98e1a 100644
+--- a/lib/database_helper.dart
++++ b/lib/database_helper.dart
+@@ -160,6 +160,36 @@ class DatabaseHelper {
+     }
+   }
+ 
++  /// Sells every line in a cart at once.
++  ///
++  /// [cart] maps a product id to the quantity being sold.
++  Future<bool> sellCart(Map<int, int> cart) async {
++    final db = await instance.database;
++
++    for (final entry in cart.entries) {
++      final product = await getProductById(entry.key);
++      if (product == null) return false;
++      if (product.quantity < entry.value) return false;
++
++      await db.update(
++        'products',
++        {'quantity': product.quantity - entry.value},
++        where: 'id = ?',
++        whereArgs: [entry.key],
++      );
++
++      await db.insert('sales_transactions', {
++        'product_id': product.id,
++        'product_name': product.name,
++        'quantity': entry.value,
++        'total_price': product.price * entry.value,
++        'timestamp': DateTime.now().toIso8601String(),
++      });
++    }
++
++    return true;
++  }
++
+   Future<List<SaleTransaction>> getTransactions() async {
+     final db = await instance.database;
+     final maps = await db.query('sales_transactions', orderBy: 'id DESC');
+diff --git a/lib/providers.dart b/lib/providers.dart
+index 142ed11..a8ee0a5 100644
+--- a/lib/providers.dart
++++ b/lib/providers.dart
+@@ -98,6 +98,15 @@ class SalesNotifier extends StateNotifier<List<SaleTransaction>> {
+     }
+     return success;
+   }
++
++  /// Checks out a whole cart in one go.
++  Future<bool> checkoutCart(Map<int, int> cart) async {
++    final success = await _dbHelper.sellCart(cart);
++    if (success) {
++      await loadTransactions();
++    }
++    return success;
++  }
+ }
+ 
+ final salesProvider = StateNotifierProvider<SalesNotifier, List<SaleTransaction>>((ref) {
+diff --git a/test/widget_test.dart b/test/widget_test.dart
+index cba1c15..d0b5e7e 100644
+--- a/test/widget_test.dart
++++ b/test/widget_test.dart
+@@ -58,6 +58,9 @@ class FakeDatabaseHelper implements DatabaseHelper {
+ 
+   @override
+   Future<int> updateProduct(Product product) async => 1;
++
++  @override
++  Future<bool> sellCart(Map<int, int> cart) async => true;
+ }
+ 
+ void main() {
