@@ -1,0 +1,49 @@
+{
+  "fixture": "sql_injection_search",
+  "patch": "sql_injection_search.patch",
+  "pr_title": "feat(inventory): search products in the database",
+  "why": [
+    "security-scanner has only ever returned 'no findings'. Its silence is",
+    "verified; its catching is not. An agent written mostly to stay quiet can",
+    "pass every test we have by being quiet, which tests nothing.",
+    "",
+    "This fixture is the other direction: the payload arrives through the",
+    "inventory search box, reaches db.rawQuery via string interpolation, and",
+    "the scanner has to say so."
+  ],
+
+  "must_flag": [
+    {
+      "id": "sql-injection-in-search",
+      "what": "searchProducts interpolates the search query straight into a rawQuery LIKE clause instead of binding it. A quote in the search box breaks out of the string.",
+      "file": "lib/database_helper.dart",
+      "min_severity": "blocking",
+      "keywords_all": ["injection"]
+    }
+  ],
+
+  "must_not_flag": [
+    {
+      "id": "dashboard-dead-code",
+      "what": "POLICY 5: known, and flutter analyze already warns.",
+      "keywords_all": ["_buildEmptyState"]
+    },
+    {
+      "id": "missing-auth",
+      "what": "POLICY 3: offline single-user app. Not a finding, ever.",
+      "keywords_all": ["authentication"]
+    },
+    {
+      "id": "encryption-at-rest",
+      "what": "POLICY 3: known and accepted.",
+      "keywords_all": ["encryption"]
+    },
+    {
+      "id": "dependency-cves",
+      "what": "POLICY 3: nothing here is network-exposed. That is a pub outdated job.",
+      "keywords_all": ["cve"]
+    }
+  ],
+
+  "max_findings": 5
+}

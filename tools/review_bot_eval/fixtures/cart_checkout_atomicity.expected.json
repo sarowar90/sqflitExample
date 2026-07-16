@@ -1,0 +1,72 @@
+{
+  "fixture": "cart_checkout_atomicity",
+  "patch": "cart_checkout_atomicity.patch",
+  "pr_title": "feat(sales): add cart checkout",
+  "why": [
+    "This diff was merged into main by accident and nothing stopped it.",
+    "flutter analyze was clean and all 24 tests passed. Every automated gate",
+    "the repo had said yes. If the bot cannot catch this one, it has no reason",
+    "to exist."
+  ],
+
+  "must_flag": [
+    {
+      "id": "sell-cart-not-atomic",
+      "what": "sellCart runs the stock read, decrement and sale insert as separate unguarded calls per cart line. A cart failing on line 2 leaves line 1's stock spent and its sale logged.",
+      "file": "lib/database_helper.dart",
+      "min_severity": "blocking",
+      "keywords_all": ["transaction"]
+    },
+    {
+      "id": "checkout-cart-state-drift",
+      "what": "checkoutCart reloads transactions but not products, so Inventory keeps showing pre-sale stock.",
+      "file": "lib/providers.dart",
+      "min_severity": "should fix",
+      "keywords_all": ["loadProducts"]
+    },
+    {
+      "id": "sell-cart-untested",
+      "what": "No test exercises sellCart. The only sellCart in test/ is a fake stub returning true.",
+      "file": "lib/database_helper.dart",
+      "min_severity": "should fix",
+      "keywords_all": ["untested"]
+    }
+  ],
+
+  "must_not_flag": [
+    {
+      "id": "dashboard-dead-code",
+      "what": "POLICY 5: known, documented, and already reported by flutter analyze.",
+      "keywords_all": ["_buildEmptyState"]
+    },
+    {
+      "id": "greeting-leftovers",
+      "what": "POLICY 5: unused practice files, known.",
+      "keywords_all": ["greeting"]
+    },
+    {
+      "id": "mobile-scanner-kotlin",
+      "what": "POLICY 5: the legacy Kotlin Gradle Plugin warning is known.",
+      "keywords_all": ["kotlin"]
+    },
+    {
+      "id": "missing-auth",
+      "what": "POLICY 3: the app is offline and single-user by design. There is no auth to be missing.",
+      "keywords_all": ["authentication"]
+    },
+    {
+      "id": "encryption-at-rest",
+      "what": "POLICY 3: known and accepted. pos_database.db is plaintext on the device.",
+      "keywords_all": ["encryption"]
+    },
+    {
+      "id": "finding-against-unchanged-sellproduct",
+      "what": "sellProduct is the reference implementation and is not in this diff. Naming it while explaining the bug is right; filing a finding against it is noise.",
+      "file": "lib/database_helper.dart",
+      "keywords_all": ["sellProduct"],
+      "lines": [117, 161]
+    }
+  ],
+
+  "max_findings": 6
+}
