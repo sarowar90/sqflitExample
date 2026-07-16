@@ -2,8 +2,8 @@
 
 What the PR review bot checks, and — just as importantly — what it stays quiet about.
 
-This file is the bot's rubric. A review is **useful** when every comment would change what a
-maintainer does. A review is **noisy** when it restates the diff, repeats the linter, or flags
+This file is the bot's rubric — what to check. [`REVIEW_BOT.md`](REVIEW_BOT.md) covers who checks
+it. A review is **useful** when every comment would change what a maintainer does. A review is **noisy** when it restates the diff, repeats the linter, or flags
 things that were already true before the PR. Noise is the default failure mode: a bot that
 comments on everything gets muted, and then it catches nothing.
 
