@@ -12,12 +12,18 @@ Before opening a change, run:
 
 ```bash
 flutter analyze        # must be clean (flutter_lints)
-flutter test           # see the note about the default test below
+flutter test           # must pass
 ```
 
-!!! warning "Replace the default test"
-    `test/widget_test.dart` is still the default Flutter counter test and does not match this
-    app — it will fail as-is. Replace it before relying on `flutter test`.
+!!! note "How the tests are wired"
+    `test/database_helper_test.dart` runs against a real SQLite database through
+    `sqflite_common_ffi` (`sqfliteFfiInit()` + `databaseFactory = databaseFactoryFfi` in
+    `setUpAll`) — plain `sqflite` has no desktop implementation. It uses the
+    `DatabaseHelper.instance` singleton, so **a test run wipes your local `pos_database.db`**.
+    `test/widget_test.dart` overrides `dbHelperProvider` with a fake instead of touching SQLite.
+
+Pull requests are reviewed against [`REVIEW_POLICY.md`](https://github.com/sarowar90/sqflitExample/blob/main/REVIEW_POLICY.md)
+in the repo root, which spells out what gets flagged (and what is deliberately ignored).
 
 ## Commit conventions
 
