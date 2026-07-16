@@ -243,10 +243,86 @@ returned a wall of text, or Explore ignored its cap, or someone read a file into
 
 ---
 
+---
+
+# Parallelism
+
+The four checkers fan out in one round rather than queueing, because they share no state and cannot
+read each other's output anyway. Wall clock for the stage is the slowest checker, not the sum:
+
+| Checker | Duration |
+|---|---:|
+| `invariant-checker` | 38.6s |
+| `test-auditor` | 62.6s |
+| `security-scanner` | 13.3s |
+| `style-checker` | 12.6s |
+| **Sequential would be** | **127.1s** |
+| **Parallel actually was** | **~62.6s** |
+
+Roughly half, and the ratio improves as checkers are added — a fifth checker is free unless it is
+slower than `test-auditor`.
+
+The stages that cannot overlap do not: Explore has to finish before any checker starts, because the
+bundle is their input, and synthesis needs all four reports. Only the fan-out is parallel, and that
+is the only place it would have helped.
+
+**Long runs belong in the background.** A full fixture eval — apply the patch to a worktree, run
+Explore, run four checkers, score — takes minutes and needs no supervision. Run it detached and keep
+working; the alternative is a person watching a progress bar. The refactor in
+`refactor/dashboard-metrics-provider` was written while a `cart_checkout_atomicity` eval ran in the
+background, and neither waited for the other. Two rules make that safe: the background job works in
+its own git worktree, so it cannot fight the foreground branch, and it reports rather than merges.
+
+---
+
+# What the bot does without asking, and what it does not
+
+The dangerous part of an agent is not what it gets wrong. It is what it is allowed to do while it is
+wrong. So the line is drawn by blast radius, not by confidence.
+
+| Action | Trigger | Why it is safe to be automatic |
+|---|---|---|
+| **Review a PR** | `pull_request` | Writes one comment. A wrong review is a wrong opinion, and opinions do not merge themselves. |
+| **Label an issue** | `issues: opened` | Worst case is a wrong label, undone in one click. The triager may not close, assign, or call an issue invalid — those need history it does not have. |
+
+| Action | Trigger | Why a human has to start it |
+|---|---|---|
+| **Auto-fix failing tests** | A maintainer adds `bot:autofix` | A bot that rewrites code the moment CI goes red will eventually "fix" a failing test by deleting the assertion. The label is a person saying: I looked, and I think this failure is mechanical. |
+
+And regardless of trigger, three things the bot never does:
+
+- **It never pushes to the branch under review.** A fix arrives as a PR against that branch. The
+  author keeps the last word on their own work, and the change arrives as something to read rather
+  than something that already happened.
+- **It never merges anything.** Not its fixes, not a green PR, nothing.
+- **It never turns CI green or red.** The `checks` job — `flutter analyze`, `flutter test`, the eval
+  harness — is the gate, and it does not wait on a model. The review is advice sitting next to it.
+  Nothing the bot says can pass a PR that the tests fail.
+
+Auto-fix is also verified against itself: after the model reports success, the workflow re-runs
+`flutter analyze` and `flutter test` independently. The model's claim to be green is not evidence
+of being green.
+
+The thing worth being nervous about is auto-fix quietly weakening a test, since a suite that goes
+green by deleting an assertion looks exactly like a suite that goes green by working. That is why
+the prompt forbids it explicitly, why the fix must survive an independent run, and why it lands as
+a diff a person reads. This repo already learned the general lesson the hard way: a PR with clean
+`flutter analyze` and 24 passing tests merged non-atomic sales into `main`. **Green is not proof.**
+
+---
+
 ## What runs where
 
 The subagent definitions live in `.claude/agents/*.md`. The orchestrator is a Claude Code session
-triggered on `pull_request`, posting through `gh pr comment`.
+triggered on `pull_request` (`.github/workflows/pr-review.yml`), posting through `gh pr comment`.
+
+**`pull_request`, not `pull_request_target`.** The latter runs in the base repo's context with
+secrets available, against code the PR author controls — on a public repo that hands
+`ANTHROPIC_API_KEY` to a stranger's branch. The cost is that fork PRs get no review; the fork guard
+makes that an explicit skip rather than a confusing auth error.
+
+Every PR costs real tokens — one measured run was ~200k. `concurrency` cancels a superseded run so a
+force-push does not pay twice.
 
 Note: Claude Code registers `.claude/agents/` at session start. Agents added mid-session are not
 callable by name until the session restarts — which is why the CI orchestrator boots fresh per PR
