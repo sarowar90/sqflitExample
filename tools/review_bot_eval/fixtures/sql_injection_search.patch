@@ -1,0 +1,44 @@
+diff --git a/lib/database_helper.dart b/lib/database_helper.dart
+index cb98e1a..4cbc21d 100644
+--- a/lib/database_helper.dart
++++ b/lib/database_helper.dart
+@@ -79,6 +79,19 @@ class DatabaseHelper {
+     return null;
+   }
+ 
++  /// Searches products by name or barcode.
++  ///
++  /// Moves the inventory search off the in-memory list so it keeps working
++  /// once the catalogue outgrows what we load up front.
++  Future<List<Product>> searchProducts(String query) async {
++    final db = await instance.database;
++    final maps = await db.rawQuery(
++      "SELECT * FROM products WHERE name LIKE '%$query%' OR barcode LIKE '%$query%' ORDER BY id DESC",
++    );
++
++    return maps.map((map) => Product.fromMap(map)).toList();
++  }
++
+   Future<Product?> getProductByBarcode(String barcode) async {
+     final db = await instance.database;
+     final maps = await db.query(
+diff --git a/lib/providers.dart b/lib/providers.dart
+index a8ee0a5..8891839 100644
+--- a/lib/providers.dart
++++ b/lib/providers.dart
+@@ -114,6 +114,15 @@ final salesProvider = StateNotifierProvider<SalesNotifier, List<SaleTransaction>
+   return SalesNotifier(dbHelper, ref);
+ });
+ 
++/// Inventory search backed by the database rather than the loaded list.
++final dbSearchResultsProvider = FutureProvider.autoDispose<List<Product>>((ref) async {
++  final query = ref.watch(searchQueryProvider);
++  if (query.isEmpty) return [];
++
++  final dbHelper = ref.watch(dbHelperProvider);
++  return await dbHelper.searchProducts(query);
++});
++
+ // --- POS / QR Scanner State ---
+ final scannedBarcodeProvider = StateProvider<String?>((ref) => null);
+ 
