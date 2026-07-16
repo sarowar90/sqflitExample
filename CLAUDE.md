@@ -25,7 +25,7 @@ flutter build apk            # Release Android build
 
 `mobile_scanner` requires the camera permission; QR scanning only works on a device with a camera (a physical Android phone is the realistic target — desktop/web have no scannable camera flow). The `CAMERA` permission is declared automatically by the package on Android.
 
-Note: `test/widget_test.dart` is still the default Flutter counter test and does not match this app — it will fail if run as-is. Replace it before relying on `flutter test`.
+Note: `test/database_helper_test.dart` runs against a real SQLite database through `sqflite_common_ffi` (`sqfliteFfiInit()` + `databaseFactory = databaseFactoryFfi` in `setUpAll`); plain `sqflite` has no desktop implementation and would fail. `test/widget_test.dart` overrides `dbHelperProvider` with a `FakeDatabaseHelper` instead of touching SQLite.
 
 ## Architecture
 
