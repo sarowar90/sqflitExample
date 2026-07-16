@@ -160,36 +160,6 @@ class DatabaseHelper {
     }
   }
 
-  /// Sells every line in a cart at once.
-  ///
-  /// [cart] maps a product id to the quantity being sold.
-  Future<bool> sellCart(Map<int, int> cart) async {
-    final db = await instance.database;
-
-    for (final entry in cart.entries) {
-      final product = await getProductById(entry.key);
-      if (product == null) return false;
-      if (product.quantity < entry.value) return false;
-
-      await db.update(
-        'products',
-        {'quantity': product.quantity - entry.value},
-        where: 'id = ?',
-        whereArgs: [entry.key],
-      );
-
-      await db.insert('sales_transactions', {
-        'product_id': product.id,
-        'product_name': product.name,
-        'quantity': entry.value,
-        'total_price': product.price * entry.value,
-        'timestamp': DateTime.now().toIso8601String(),
-      });
-    }
-
-    return true;
-  }
-
   Future<List<SaleTransaction>> getTransactions() async {
     final db = await instance.database;
     final maps = await db.query('sales_transactions', orderBy: 'id DESC');
