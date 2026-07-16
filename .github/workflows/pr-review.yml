@@ -1,0 +1,126 @@
+name: PR review bot
+
+# `pull_request`, deliberately not `pull_request_target`.
+#
+# pull_request_target runs in the base repo's context with secrets available,
+# against code the PR author controls. On a public repo that is a stranger's
+# branch holding the ANTHROPIC_API_KEY. The cost of this choice is that fork
+# PRs get no secrets and so no review — correct, and the fork guard below makes
+# it explicit instead of a confusing silent skip.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Least privilege: read the code, write one comment. Nothing else.
+permissions:
+  contents: read
+  pull-requests: write
+
+# A force-push mid-review should cancel the old run, not race it to the
+# comment. Reviews are not cheap; do not pay twice for the same PR.
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Review
+    runs-on: ubuntu-latest
+    # Fork PRs cannot reach secrets, so the bot cannot run. Skip loudly rather
+    # than fail with an auth error nobody can act on.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Check out the PR with its history
+        uses: actions/checkout@v4
+        with:
+          # The pipeline diffs against the base branch, so a shallow clone has
+          # nothing to diff against.
+          fetch-depth: 0
+
+      - name: Make the base branch available to git diff
+        run: git fetch origin ${{ github.base_ref }}:${{ github.base_ref }} --depth=50
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run the review pipeline
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          # The PR title is author-controlled text. Passing it through the env
+          # rather than interpolating it into the run block keeps a title like
+          # `"; rm -rf / #` from becoming shell.
+          claude -p "$(cat <<'PROMPT'
+          You are the orchestrator of the PR review pipeline described in REVIEW_BOT.md.
+          Read REVIEW_BOT.md and REVIEW_POLICY.md first.
+
+          The PR branch is checked out. Diff it against the base ref in $BASE_REF.
+          The PR title is in $PR_TITLE.
+
+          1. Run the `pr-context-explorer` subagent to build the context bundle.
+          2. Run `invariant-checker`, `test-auditor`, `security-scanner` and
+             `style-checker` in parallel, giving each the same bundle in full.
+          3. Synthesise: deduplicate (one problem, one finding, filed at its root
+             cause), normalise severity across checkers, and drop anything listed
+             as known noise in REVIEW_POLICY.md section 5.
+          4. Write the review to review.md in the repo root, in the output format
+             REVIEW_POLICY.md specifies. If there are no findings, write the
+             verdict line alone.
+
+          Do not edit any file except review.md. Do not push. Do not comment.
+          PROMPT
+          )" \
+            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Write" \
+            --permission-mode acceptEdits
+
+      - name: Post the review
+        if: always() && hashFiles('review.md') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # One rolling comment per PR, not a new one per push. A bot that
+          # stacks eight comments on a branch gets collapsed and then ignored.
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file review.md \
+            --edit-last --create-if-none
+
+      - name: Explain a skipped review
+        if: failure()
+        run: |
+          echo "::warning::The review pipeline failed. Common causes: ANTHROPIC_API_KEY is not set on this repo, or the account is out of credit."
+
+  # Deliberately separate from the review. This job is the gate; the review is
+  # advice. Nothing the bot says should be able to turn CI green or red, and
+  # nothing here waits on a model.
+  checks:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Eval harness tests
+        run: python -m unittest discover -s tools/review_bot_eval/tests -t tools/review_bot_eval

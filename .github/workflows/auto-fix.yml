@@ -1,0 +1,157 @@
+name: Auto-fix failing tests
+
+# NOT automatic. A human adds the `bot:autofix` label to a PR whose tests are
+# failing, and only then does this run. See REVIEW_BOT.md, "What needs a human".
+#
+# The reason it is opt-in: a bot that rewrites code the moment CI goes red will
+# eventually "fix" a failing test by changing the test. The label is a person
+# saying "I have looked at this failure and I think it is mechanical."
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write        # to push the fix branch — never to the PR branch itself
+  pull-requests: write
+
+concurrency:
+  group: autofix-${{ github.event.pull_request.number }}
+  cancel-in-progress: false   # never cancel a run that may be mid-push
+
+jobs:
+  autofix:
+    name: Attempt a fix
+    runs-on: ubuntu-latest
+    if: >
+      github.event.label.name == 'bot:autofix' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Capture the failure
+        id: failure
+        run: |
+          set +e
+          flutter test 2>&1 | tee test-output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Nothing to fix
+        if: steps.failure.outputs.exit_code == '0'
+        run: |
+          echo "::notice::Tests pass. Auto-fix has nothing to do."
+
+      - uses: actions/setup-node@v4
+        if: steps.failure.outputs.exit_code != '0'
+        with:
+          node-version: "20"
+
+      - name: Install Claude Code
+        if: steps.failure.outputs.exit_code != '0'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Attempt the fix
+        if: steps.failure.outputs.exit_code != '0'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          claude -p "$(cat <<'PROMPT'
+          `flutter test` is failing on this branch. The output is in test-output.txt.
+
+          Read REVIEW_POLICY.md first — the invariants in section 1 are not negotiable, and a
+          "fix" that breaks one is worse than the failing test.
+
+          Fix the failure if, and only if, it is mechanical:
+            - a signature changed and a caller or fake was not updated
+            - a test asserts on UI text that legitimately moved
+            - an import, a type, or a null-check the compiler can point at
+
+          Do NOT touch it if the test is failing because the code is wrong. A red test
+          that has found a real bug is the test working. Changing it hides the bug, and
+          the whole point of this repo's bot is that a green suite is not proof.
+
+          Never weaken a test to make it pass: no deleting assertions, no loosening a
+          matcher, no marking it skipped, no try/catch around the failure.
+
+          If you cannot fix it within those limits, change nothing and write your reason
+          to autofix-result.md. That is a successful run.
+
+          When you do fix it, run `flutter test` and `flutter analyze` and confirm both are
+          clean, then write what you changed and why to autofix-result.md.
+          PROMPT
+          )" \
+            --allowedTools "Read,Grep,Glob,Edit,Write,Bash(flutter test:*),Bash(flutter analyze:*)" \
+            --permission-mode acceptEdits
+
+      - name: Verify the fix independently
+        id: verify
+        if: steps.failure.outputs.exit_code != '0'
+        run: |
+          set +e
+          # The model says it is green. Check that ourselves — its own claim is
+          # not evidence.
+          flutter analyze
+          analyze=$?
+          flutter test
+          tests=$?
+          echo "green=$([ $analyze -eq 0 ] && [ $tests -eq 0 ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+
+      - name: Open a PR with the fix
+        if: steps.verify.outputs.green == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain -- lib/ test/)" ]; then
+            echo "::notice::No changes to propose."
+            exit 0
+          fi
+
+          BRANCH="autofix/pr-${PR_NUMBER}-$(date +%s)"
+          git config user.name "review-bot"
+          git config user.email "noreply@github.com"
+          git checkout -b "$BRANCH"
+          git add lib/ test/
+          git commit -m "fix: repair failing tests on #${PR_NUMBER}
+
+          Attempted automatically after a maintainer applied bot:autofix.
+          flutter analyze and flutter test are green on this branch.
+
+          This is a proposal. Read the diff before merging it."
+          git push origin "$BRANCH"
+
+          # A PR, never a push to the branch under review. The author keeps the
+          # last word on their own branch, and the fix arrives as something to
+          # read rather than something that already happened.
+          gh pr create \
+            --base "$BASE" \
+            --head "$BRANCH" \
+            --title "fix: auto-fix for #${PR_NUMBER}" \
+            --body-file autofix-result.md
+
+      - name: Report a fix that was not attempted or did not hold
+        if: always() && steps.failure.outputs.exit_code != '0' && steps.verify.outputs.green != 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BODY="autofix-result.md"
+          test -f "$BODY" || echo "Auto-fix ran but produced no result file. Nothing was changed." > "$BODY"
+          {
+            echo
+            echo "<sub>No changes were pushed. Auto-fix only proposes a PR when it can make the suite green without weakening a test.</sub>"
+          } >> "$BODY"
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file "$BODY"
