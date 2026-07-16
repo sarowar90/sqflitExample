@@ -113,7 +113,7 @@ class ProductListScreen extends ConsumerWidget {
     WidgetRef ref,
     Product product,
   ) {
-    final isLowStock = product.quantity <= 5;
+    final isLowStock = product.quantity <= kLowStockThreshold;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),

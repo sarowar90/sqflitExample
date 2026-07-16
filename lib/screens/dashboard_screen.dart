@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers.dart';
 import '../theme.dart';
-import '../models.dart';
 
 class DashboardScreen extends ConsumerWidget {
   final Function(int) onTabChange;
@@ -12,20 +11,7 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final products = ref.watch(productListProvider);
-    final transactions = ref.watch(salesProvider);
-
-    // Calculate metrics
-    final totalProducts = products.length;
-    final lowStockCount = products.where((p) => p.quantity <= 5).length;
-    final totalSalesValue = transactions.fold<double>(
-      0,
-      (sum, t) => sum + t.totalPrice,
-    );
-    final totalItemsSold = transactions.fold<int>(
-      0,
-      (sum, t) => sum + t.quantity,
-    );
+    final metrics = ref.watch(dashboardMetricsProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -93,29 +79,29 @@ class DashboardScreen extends ConsumerWidget {
                   _buildStatCard(
                     context: context,
                     title: 'Total Products',
-                    value: '$totalProducts',
+                    value: '${metrics.totalProducts}',
                     icon: Icons.inventory_2_outlined,
                     gradient: AppTheme.primaryGradient,
                   ),
                   _buildStatCard(
                     context: context,
                     title: 'Low Stock Alert',
-                    value: '$lowStockCount',
+                    value: '${metrics.lowStockCount}',
                     icon: Icons.warning_amber_rounded,
                     gradient: AppTheme.alertGradient,
-                    highlight: lowStockCount > 0,
+                    highlight: metrics.hasLowStock,
                   ),
                   _buildStatCard(
                     context: context,
                     title: 'Total Sales',
-                    value: '\$${totalSalesValue.toStringAsFixed(2)}',
+                    value: '\$${metrics.totalSalesValue.toStringAsFixed(2)}',
                     icon: Icons.monetization_on_outlined,
                     gradient: AppTheme.successGradient,
                   ),
                   _buildStatCard(
                     context: context,
                     title: 'Items Sold',
-                    value: '$totalItemsSold',
+                    value: '${metrics.totalItemsSold}',
                     icon: Icons.shopping_basket_outlined,
                     gradient: AppTheme.accentGradient,
                   ),
@@ -189,20 +175,6 @@ class DashboardScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 10),
-
-              // // Recent Transactions List
-              // if (transactions.isEmpty)
-              //   _buildEmptyState()
-              // else
-              //   ListView.builder(
-              //     shrinkWrap: true,
-              //     physics: const NeverScrollableScrollPhysics(),
-              //     itemCount: transactions.length > 5 ? 5 : transactions.length,
-              //     itemBuilder: (context, index) {
-              //       final tx = transactions[index];
-              //       return _buildTransactionItem(tx);
-              //     },
-              //   ),
             ],
           ),
         ),
@@ -352,101 +324,6 @@ class DashboardScreen extends ConsumerWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildTransactionItem(SaleTransaction tx) {
-    // Format date format simple MM/DD HH:MM
-    final timeStr =
-        "${tx.timestamp.month}/${tx.timestamp.day} ${tx.timestamp.hour.toString().padLeft(2, '0')}:${tx.timestamp.minute.toString().padLeft(2, '0')}";
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppTheme.secondaryColor.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.done_rounded,
-              color: AppTheme.secondaryColor,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  tx.productName,
-                  style: GoogleFonts.outfit(
-                    color: AppTheme.textPrimaryColor,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Qty: ${tx.quantity} | $timeStr',
-                  style: GoogleFonts.outfit(
-                    color: AppTheme.textSecondaryColor,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            '+\$${tx.totalPrice.toStringAsFixed(2)}',
-            style: GoogleFonts.outfit(
-              color: AppTheme.secondaryColor,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppTheme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.receipt_long,
-            size: 48,
-            color: AppTheme.textSecondaryColor.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'No sales transactions logged yet.',
-            style: GoogleFonts.outfit(
-              color: AppTheme.textSecondaryColor,
-              fontSize: 14,
-            ),
-          ),
-        ],
       ),
     );
   }
